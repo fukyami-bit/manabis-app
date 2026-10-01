@@ -52,7 +52,7 @@
     border-radius:16px 16px 0 0;display:flex;flex-direction:column;overflow:hidden}#appB .sheet-hd{padding:12px 12px 12px 16px;background:var(--card);border-bottom:1px solid var(--line);
     position:sticky;top:0;z-index:2;
     display:flex;align-items:flex-start;gap:12px}#appB .sheet-hd .t{flex:1;min-width:0}#appB .sheet-hd .t b{font-size:18px}#appB .sheet-hd .t small{display:block;color:var(--ink-2);font-size:12.5px}#appB .sheet-hd .x{font-size:15px;font-weight:600;color:var(--ink);min-width:72px;min-height:44px;
-    padding:10px 14px;border:1px solid var(--line);border-radius:10px;background:#fff;flex-shrink:0}#appB .sheet-hd .x:active{background:#EFEDE7}#appB .sheet-ft{padding:10px 14px calc(14px + env(safe-area-inset-bottom));background:var(--card);
+    padding:10px 14px;border:1px solid var(--line);border-radius:10px;background:#fff;flex-shrink:0}#appB .sheet-hd .x:active{background:#EFEDE7}#appB .day .info small .who{display:inline-flex;align-items:baseline;gap:4px;margin-right:10px;white-space:nowrap}#appB .day .info small .who em{font-style:normal;font-size:11px;color:#5A6672;font-variant-numeric:tabular-nums}#appB .day .info small{display:block;line-height:1.5}#appB .sheet-ft{padding:10px 14px calc(14px + env(safe-area-inset-bottom));background:var(--card);
     border-top:1px solid var(--line)}#appB .sheet-ft button{width:100%;min-height:48px;font-size:15px;font-weight:600;color:var(--ink);
     border:1px solid var(--line);border-radius:10px;background:#fff}#appB .sheet-ft button:active{background:#EFEDE7}#appB .sheet-bd{overflow-y:auto;padding:12px 14px calc(20px + env(safe-area-inset-bottom));-webkit-overflow-scrolling:touch}#appB .setdates{padding:10px 16px;background:#EFEDE6;font-size:13px;border-bottom:1px solid var(--line)}#appB .setdates span{font-family:var(--num);font-weight:600;margin-right:10px}#appB .day{display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:var(--card);
     border:1px solid var(--line);border-radius:10px;padding:11px 13px;margin-bottom:7px}#appB .day.mine{border-color:var(--accent);background:#F1F8F7}#appB .day.full{opacity:.55}#appB .day .d{flex-shrink:0;width:62px;font-family:var(--num)}#appB .day .d b{font-size:21px;font-weight:600;line-height:1}#appB .day .d small{display:block;font-size:11px;color:var(--ink-2)}#appB .day .d.sat b, #appB .day .d.sat small{color:#3B57C4}#appB .day .d.sun b, #appB .day .d.sun small{color:#C0392B}#appB .day .info{flex:1;min-width:0}#appB .day .info .bar{height:7px;border-radius:4px;background:#E6E3DC;overflow:hidden;margin-bottom:5px}#appB .day .info .bar i{display:block;height:100%}#appB .day .info small{font-size:11.5px;color:var(--ink-2);display:block;
@@ -229,7 +229,6 @@
   }
   var saved=null;
   try{ saved=localStorage.getItem(KEY); }catch(e){}
-  // 初回は画面の広さで判断（スマホなら日程設定、PCならスケジュール表）
   apply(saved || (window.innerWidth < 760 ? 'B' : 'A'));
   document.getElementById('mbA').addEventListener('click',function(){apply('A');});
   document.getElementById('mbB').addEventListener('click',function(){apply('B');});
@@ -1986,13 +1985,28 @@ async function parseShiftFile(file) {
     }));
   }
   if (!parsed) throw new Error('シフト表から日付とスタッフ名を読み取れませんでした。');
-  return parsed.days.map(d => ({
-    y: d.y, m: d.m, d: d.d,
-    staff: Object.keys(d.cells).filter(n => parseCell(d.cells[n], d.open, d.close).length)
-  }));
+  return parsed.days.map(d => {
+    const staff = [], hours = {};
+    Object.keys(d.cells).forEach(n => {
+      const rg = parseCell(d.cells[n], d.open, d.close);
+      if (!rg.length) return;
+      staff.push(n);
+      hours[n] = rg;                        // 勤務時間帯も持っておく
+    });
+    return { y: d.y, m: d.m, d: d.d, staff: staff, hours: hours };
+  });
 }
 
 /* ---------- 空き状況の計算 ---------- */
+function hm(min) { return Math.floor(min / 60) + ':' + pad(min % 60); }
+
+/** その日その人の勤務時間帯を「18:00-21:45」の形にする */
+function hoursText(day, name) {
+  const rec = state.shiftDays.find(x => x.m === state.month && x.d === day);
+  const rg = rec && rec.hours ? rec.hours[name] : null;
+  if (!rg || !rg.length) return '';
+  return rg.map(r => hm(r[0]) + '-' + hm(r[1])).join('、');
+}
 function teamOf(staffName) {
   for (const t in state.teams) if (state.teams[t].indexOf(staffName) >= 0) return t;
   return null;
@@ -2260,7 +2274,13 @@ function renderDayList() {
         <span class="d ${wdc}"><b>${d}</b><small>${wd === null ? '' : WDAY[wd]}</small></span>
         <span class="info">
           <span class="bar"><i style="width:${pct}%;background:${cls === 'r-ng' ? '#B23A2E' : cls === 'r-warn' ? '#D99A2B' : '#3E9E7A'}"></i></span>
-          <small>${cap === null ? 'シフト未読込' : (staff.length ? staff.join('・') : 'このチームの出勤なし')}</small>
+          <small>${cap === null ? 'シフト未読込'
+            : (staff.length
+              ? staff.map(n => {
+                  const t = hoursText(d, n);
+                  return `<span class="who">${esc(n)}${t ? `<em>${t}</em>` : ''}</span>`;
+                }).join('')
+              : 'このチームの出勤なし')}</small>
         </span>
         <span class="rest ${cls}"><b>${already ? '設定済' : (rest === null ? '?' : rest)}</b>${already ? '' : '<small>あと</small>'}</span>
       </button>` + (near && !already ? `<div class="note">前後2日以内に予定があります</div>` : '');
