@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --ink:#12212E; --ink-2:#5A6672; --line:#DFDCD4; --paper:#F5F3EE; --card:#FFF;
+    --accent:#0E6E6B; --accent-dark:#0A514F;
+    --ok:#1B7A5A; --ok-bg:#E4F2EC; --warn:#B06A0F; --warn-bg:#FBF0DC; --ng:#B23A2E; --ng-bg:#FAE7E4;
+    --gothic:-apple-system,"Hiragino Kaku Gothic ProN","Yu Gothic Medium","Noto Sans JP",sans-serif;
+    --num:ui-monospace,"SF Mono",Menlo,monospace;
+    --tab-h:60px;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--gothic);font-size:15px;
+    line-height:1.6;-webkit-font-smoothing:antialiased;padding-bottom:calc(var(--tab-h) + env(safe-area-inset-bottom))}
+  button,input,select{font-family:inherit;font-size:inherit;color:inherit}
+  button{cursor:pointer;border:none;background:none}
+  header{position:sticky;top:0;z-index:20;background:var(--ink);color:#fff;padding:10px 14px}
+  .hd{display:flex;align-items:center;gap:12px}
+  .hd h1{margin:0;font-size:16px;font-weight:600;flex:1}
+  .hd .clock{font-family:var(--num);font-size:13px;opacity:.8}
+  .kpi{display:flex;gap:8px;margin-top:9px}
+  .kpi div{flex:1;background:rgba(255,255,255,.1);border-radius:8px;padding:6px 4px;text-align:center}
+  .kpi b{display:block;font-family:var(--num);font-size:19px;line-height:1.15}
+  .kpi small{font-size:10px;opacity:.75}
+  .kpi div.hot{background:#8C2E24}
+  .kpi div.amb{background:#8A5A10}
+  main{max-width:860px;margin:0 auto;padding:12px 12px 20px}
+  .sec{margin-bottom:18px}
+  .sec>h2{margin:0 0 8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px}
+  .sec>h2 em{font-style:normal;font-family:var(--num);font-size:12px;color:var(--ink-2)}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:11px;padding:14px;margin-bottom:11px}
+  .card h3{margin:0 0 4px;font-size:15px;font-weight:600}
+  .card p{margin:0 0 11px;font-size:12.5px;color:var(--ink-2)}
+  .empty{background:var(--card);border:1px dashed var(--line);border-radius:11px;padding:26px 16px;
+    text-align:center;color:var(--ink-2);font-size:13px}
+  .row{display:flex;align-items:center;gap:11px;background:var(--card);border:1px solid var(--line);
+    border-left:4px solid var(--bc,#CFCABE);border-radius:10px;padding:10px 12px;margin-bottom:7px}
+  .row .tm{flex-shrink:0;font-family:var(--num);font-size:15px;font-weight:600;width:44px}
+  .row .nm{flex:1;min-width:0}
+  .row .nm b{display:block;font-size:15px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .row .nm small{display:block;font-size:11.5px;color:var(--ink-2)}
+  .row .bo{flex-shrink:0;text-align:center;min-width:58px;font-family:var(--num)}
+  .row .bo b{display:block;font-size:19px;line-height:1.1}
+  .row .bo small{display:block;font-size:10px;color:var(--ink-2);font-family:var(--gothic)}
+  .row .act{flex-shrink:0}
+  .tag{display:inline-block;font-size:10.5px;padding:1px 7px;border-radius:999px;margin-left:5px;
+    vertical-align:1px;font-weight:600}
+  .t-ok{background:var(--ok-bg);color:var(--ok)}
+  .t-warn{background:var(--warn-bg);color:var(--warn)}
+  .t-ng{background:var(--ng-bg);color:var(--ng)}
+  .t-mut{background:#EDEBE4;color:var(--ink-2)}
+  .bchk{min-width:96px;min-height:42px;border-radius:9px;border:1.5px solid #BFD8D6;background:#fff;
+    color:var(--accent);font-size:13.5px;font-weight:600}
+  .bchk.done{border-color:var(--line);background:#F2F1EC;color:var(--ink-2);font-weight:400}
+  .btn{display:block;width:100%;padding:13px;background:var(--accent);color:#fff;border-radius:10px;
+    font-weight:600;text-align:center}
+  .btn:disabled{background:#B9BEC2}
+  .btn.sub{background:#fff;color:var(--accent);border:1.5px solid #BFD8D6}
+  .btn.warnbtn{background:#fff;color:var(--ng);border:1.5px solid #E8C4BE}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+  label.f{display:block;margin-bottom:10px;font-size:12.5px;color:var(--ink-2)}
+  label.f input,label.f select{width:100%;padding:11px;border:1px solid var(--line);border-radius:9px;
+    background:#fff;color:var(--ink);font-size:15px;margin-top:4px}
+  label.f input[inputmode=numeric]{font-family:var(--num);font-size:19px;text-align:center}
+  .file{display:block;width:100%;padding:14px;border:1.5px dashed var(--line);border-radius:10px;
+    background:#FCFBF8;text-align:center;font-size:14px;cursor:pointer}
+  .file.set{border-style:solid;border-color:#BFD8D6;background:#F1F8F7}
+  nav{position:fixed;left:0;right:0;bottom:0;z-index:30;background:rgba(255,255,255,.97);
+    backdrop-filter:blur(10px);border-top:1px solid var(--line);display:flex;padding-bottom:env(safe-area-inset-bottom)}
+  nav button{flex:1;padding:8px 2px;font-size:10.5px;color:var(--ink-2);display:flex;flex-direction:column;
+    align-items:center;gap:2px;position:relative}
+  nav button.on{color:var(--accent);font-weight:600}
+  nav svg{width:21px;height:21px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+  nav .dot{position:absolute;top:5px;right:50%;margin-right:-20px;min-width:16px;height:16px;border-radius:999px;
+    background:var(--ng);color:#fff;font-size:10px;font-family:var(--num);line-height:16px;font-weight:700;padding:0 3px}
+  .sheet{position:fixed;inset:0;z-index:1200;background:rgba(18,33,46,.45);display:flex;align-items:flex-end;justify-content:center}
+  .sheet-in{background:var(--paper);width:100%;max-width:560px;max-height:92vh;border-radius:15px 15px 0 0;
+    display:flex;flex-direction:column;overflow:hidden}
+  .sheet-hd{padding:13px 14px;background:var(--card);border-bottom:1px solid var(--line);display:flex;
+    align-items:center;gap:10px}
+  .sheet-hd b{flex:1;font-size:16px}
+  .sheet-hd button{min-height:40px;padding:8px 14px;border:1px solid var(--line);border-radius:9px;background:#fff}
+  .sheet-bd{overflow-y:auto;padding:14px 14px calc(18px + env(safe-area-inset-bottom))}
+  .toast{position:fixed;left:50%;bottom:calc(var(--tab-h) + 18px);transform:translateX(-50%);background:var(--ink);
+    color:#fff;padding:11px 18px;border-radius:999px;font-size:13.5px;z-index:1300;opacity:0;
+    transition:opacity .2s;pointer-events:none;white-space:nowrap;max-width:92vw}
+  .toast.show{opacity:1}
+  .qr{font-size:12px;color:var(--ink-2);word-break:break-all;font-family:var(--num);background:#F0EEE7;
+    padding:9px 11px;border-radius:8px;line-height:1.5}
+</style>
+</head>
+<body>
+<header>
+  <div class="hd">
+    <h1>来校管理 受付</h1>
+    <span class="clock" id="clock">—</span>
+  </div>
+  <div class="kpi" id="kpi"></div>
+</header>
+<main id="view"><div class="empty">読み込んでいます…</div></main>
+<nav id="nav"></nav>
+<div class="toast" id="toast"></div>
+
+<script>
+var TOKEN = '<?= token ?>';
+var PAGE_KEY = '<?= pageKey ?>';
+var EXEC_URL = '<?= execUrl ?>';
+
+var st = { tab:'desk', data:null, sheetOpen:false, loading:false, err:'' };
+var $ = function(id){ return document.getElementById(id); };
+var esc = function(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){
+  return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); };
+
+function call(fn, req){
+  req = req || {}; req.token = TOKEN;
+  return new Promise(function(res, rej){
+    google.script.run.withSuccessHandler(res).withFailureHandler(function(e){
+      rej(new Error(e && e.message ? e.message : '通信できませんでした')); })[fn](req);
+  });
+}
+function toast(m){
+  var t = $('toast'); t.textContent = m; t.className = 'toast show';
+  setTimeout(function(){ t.className = 'toast'; }, 2200);
+}
+
+/* ---------- 読み込み ---------- */
+function load(silent){
+  if (st.loading) return Promise.resolve();
+  st.loading = true;
+  return call('api_list', {}).then(function(r){
+    st.loading = false;
+    if (!r.ok){ st.err = r.error; if(!silent) toast(r.error); return; }
+    st.err = ''; st.data = r; render();
+  }).catch(function(e){
+    st.loading = false; st.err = e.message; if(!silent) toast(e.message);
+  });
+}
+
+/* ---------- 画面 ---------- */
+var ICONS = {
+  desk:'<path d="M3 7h18M5 7v12M19 7v12M3 19h18"/><path d="M9 11h6"/>',
+  wait:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  next:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
+  data:'<path d="M4 7v10c0 1.7 3.6 3 8 3s8-1.3 8-3V7"/><ellipse cx="12" cy="7" rx="8" ry="3"/>'
+};
+function renderNav(){
+  var d = st.data, tabs = [
+    ['desk','受付', d ? d.counts.unhanded : 0],
+    ['wait','未来校', d ? d.counts.alert : 0],
+    ['next','次回予定', 0],
+    ['data','データ', 0]
+  ];
+  $('nav').innerHTML = tabs.map(function(t){
+    return '<button data-tab="'+t[0]+'" class="'+(st.tab===t[0]?'on':'')+'">'+
+      '<svg viewBox="0 0 24 24">'+ICONS[t[0]]+'</svg>'+t[1]+
+      (t[2] ? '<span class="dot">'+t[2]+'</span>' : '')+'</button>';
+  }).join('');
+  $('nav').querySelectorAll('button').forEach(function(b){
+    b.addEventListener('click', function(){ st.tab = b.dataset.tab; render(); });
+  });
+}
+
+function renderHead(){
+  var d = st.data;
+  $('clock').textContent = d ? (d.date + '　' + d.now) : (st.err ? '接続エラー' : '—');
+  if (!d){ $('kpi').innerHTML = ''; return; }
+  var c = d.counts;
+  $('kpi').innerHTML =
+    '<div><b>'+c.visit+'</b><small>来校</small></div>'+
+    '<div class="'+(c.unhanded?'amb':'')+'"><b>'+c.unhanded+'</b><small>未配布</small></div>'+
+    '<div class="'+(c.alert?'hot':'')+'"><b>'+c.alert+'</b><small>要電話</small></div>'+
+    '<div><b>'+c.reserved+'</b><small>未来校</small></div>';
+}
+
+function render(){
+  renderHead(); renderNav();
+  var v = $('view'), d = st.data;
+  if (!d){
+    v.innerHTML = '<div class="empty">'+(st.err ? esc(st.err) : '読み込んでいます…')+'</div>';
+    return;
+  }
+  if (st.tab === 'desk') renderDesk(v);
+  else if (st.tab === 'wait') renderWait(v);
+  else if (st.tab === 'next') renderNext(v);
+  else renderData(v);
+}
+
+function visitRow(x, queue){
+  var tags = '';
+  if (x.status === '遅刻') tags += '<span class="tag t-warn">遅刻</span>';
+  if (x.via === '代理') tags += '<span class="tag t-mut">代理</span>';
+  if (!x.reservedAt) tags += '<span class="tag t-mut">予約なし</span>';
+  var bc = x.handed ? '#CFCABE' : '#B06A0F';
+  return '<div class="row" style="--bc:'+bc+'">'+
+    '<span class="tm">'+esc(x.at)+'</span>'+
+    '<span class="nm"><b>'+esc(x.name)+tags+'</b>'+
+      '<small>'+esc(x.grade)+'　'+esc(x.purpose)+
+      (x.reservedAt ? '　予約'+esc(x.reservedAt) : '')+
+      (x.next ? '　次回'+esc(x.next) : '')+'</small></span>'+
+    '<span class="bo"><b>'+esc(String(x.booth))+'</b><small>'+esc(x.boothKind.replace('ブース','').replace('自習室','自習室'))+'</small></span>'+
+    '<span class="act"><button class="bchk '+(x.handed?'done':'')+'" data-hand="'+esc(x.id)+'" data-undo="'+(x.handed?'1':'')+'">'+
+      (x.handed ? '配布 '+esc(x.handed) : 'ファイル渡した')+'</button></span>'+
+    '</div>';
+}
+
+function renderDesk(v){
+  var d = st.data;
+  var un = d.visits.filter(function(x){ return !x.handed; });
+  var hd = d.visits.filter(function(x){ return x.handed; });
+  v.innerHTML =
+    '<div class="sec"><h2>ファイル未配布 <em>'+un.length+'件</em></h2>'+
+      (un.length ? un.map(function(x){ return visitRow(x, true); }).join('')
+                 : '<div class="empty">未配布はありません</div>')+'</div>'+
+    '<button class="btn sub" id="btnProxy" style="margin-bottom:18px">代理で来校登録する</button>'+
+    '<div class="sec"><h2>配布済み <em>'+hd.length+'件</em></h2>'+
+      (hd.length ? hd.map(function(x){ return visitRow(x, false); }).join('')
+                 : '<div class="empty">まだありません</div>')+'</div>'+
+    (d.absent.length ? '<div class="sec"><h2>欠席 <em>'+d.absent.length+'件</em></h2>'+
+      d.absent.map(function(a){
+        return '<div class="row" style="--bc:#B23A2E"><span class="nm"><b>'+esc(a.name)+
+          '<span class="tag t-ng">'+esc(a.status)+'</span></b></span>'+
+          '<span class="act"><button class="bchk" data-undo-abs="'+esc(a.id)+'">取消</button></span></div>';
+      }).join('')+'</div>' : '');
+  bindDesk();
+}
+
+function bindDesk(){
+  document.querySelectorAll('[data-hand]').forEach(function(b){
+    b.addEventListener('click', function(){
+      b.disabled = true;
+      call('api_handover', { id:b.dataset.hand, undo: !!b.dataset.undo }).then(function(r){
+        if (!r.ok) { toast(r.error); b.disabled = false; return; }
+        load(true);
+      }).catch(function(e){ toast(e.message); b.disabled = false; });
+    });
+  });
+  document.querySelectorAll('[data-undo-abs]').forEach(function(b){
+    b.addEventListener('click', function(){
+      if (!confirm('この欠席の記録を取り消しますか？')) return;
+      call('api_remove', { id:b.dataset.undoAbs }).then(function(r){
+        if (!r.ok) return toast(r.error);
+        toast('取り消しました'); load(true);
+      }).catch(function(e){ toast(e.message); });
+    });
+  });
+  var p = $('btnProxy');
+  if (p) p.addEventListener('click', openProxy);
+}
+
+function renderWait(v){
+  var d = st.data;
+  var alert = d.pending.filter(function(p){ return p.alert; });
+  var soon = d.pending.filter(function(p){ return !p.alert; });
+  v.innerHTML =
+    '<div class="sec"><h2>要電話 <em>'+alert.length+'件</em></h2>'+
+      '<p style="margin:-2px 0 9px;font-size:12px;color:var(--ink-2)">予約時刻を過ぎても来校していません。電話番号は本部システムで検索してください。</p>'+
+      (alert.length ? alert.map(pendRow).join('') : '<div class="empty">ありません</div>')+'</div>'+
+    '<div class="sec"><h2>これから来る予定 <em>'+soon.length+'件</em></h2>'+
+      (soon.length ? soon.map(pendRow).join('') : '<div class="empty">ありません</div>')+'</div>';
+  document.querySelectorAll('[data-abs]').forEach(function(b){
+    b.addEventListener('click', function(){
+      var no = b.dataset.abs, nm = b.dataset.nm;
+      var s = b.dataset.kind;
+      if (!confirm(nm + ' さんを「' + s + '」として登録しますか？')) return;
+      call('api_setStatus', { no:no, status:s }).then(function(r){
+        if (!r.ok) return toast(r.error);
+        toast(s + 'で登録しました'); load(true);
+      }).catch(function(e){ toast(e.message); });
+    });
+  });
+}
+
+function pendRow(p){
+  return '<div class="row" style="--bc:'+(p.alert?'#B23A2E':'#CFCABE')+'">'+
+    '<span class="tm">'+esc(p.at||'—')+'</span>'+
+    '<span class="nm"><b>'+esc(p.name)+(p.alert?'<span class="tag t-ng">要電話</span>':'')+'</b>'+
+      '<small>'+esc(p.grade)+'</small></span>'+
+    '<span class="act" style="display:flex;gap:6px">'+
+      '<button class="bchk" style="min-width:62px" data-abs="'+esc(p.no)+'" data-nm="'+esc(p.name)+'" data-kind="欠席">欠席</button>'+
+      '<button class="bchk" style="min-width:74px;border-color:#E8C4BE;color:#B23A2E" data-abs="'+esc(p.no)+'" data-nm="'+esc(p.name)+'" data-kind="無断欠席">無断欠席</button>'+
+    '</span></div>';
+}
+
+function renderNext(v){
+  var list = st.data.nextVisits;
+  v.innerHTML =
+    '<div class="card"><h3>自習者の次回来校予定</h3>'+
+      '<p>自習の生徒は受講ブースのPCで次回予約が取れないため、ここに出た分を本部システムへ予約として入力してください。</p>'+
+      (list.length
+        ? '<div class="row2" style="grid-template-columns:1fr;gap:0">'+list.map(function(x){
+            return '<div class="row" style="--bc:#0E6E6B;margin-bottom:6px">'+
+              '<span class="nm"><b>'+esc(x.name)+'</b><small>生番号 '+esc(x.no)+'</small></span>'+
+              '<span class="bo" style="min-width:94px"><b style="font-size:15px">'+esc(x.next)+'</b><small>次回予定</small></span>'+
+              '</div>';
+          }).join('')+'</div>'+
+          '<button class="btn sub" id="btnCopyNext" style="margin-top:10px">一覧をコピー</button>'
+        : '<div class="empty">本日まだありません</div>')+
+    '</div>';
+  var b = $('btnCopyNext');
+  if (b) b.addEventListener('click', function(){
+    var t = list.map(function(x){ return x.no + '\t' + x.name + '\t' + x.next; }).join('\n');
+    if (navigator.clipboard) navigator.clipboard.writeText(t).then(function(){ toast('コピーしました'); });
+    else toast('コピーできませんでした');
+  });
+}
+
+function renderData(v){
+  var d = st.data;
+  v.innerHTML =
+    '<div class="card"><h3>生徒名簿の取り込み</h3>'+
+      '<p>本部システムの名簿Excelを選んでください。生徒番号・氏名・氏名カナ・学年・高校名だけを送ります。'+
+      '保護者氏名・住所・電話番号・生年月日はこの端末から出ません。</p>'+
+      '<label class="file '+(d.rosterCount?'set':'')+'" id="lblRos">'+
+        (d.rosterCount ? '登録済み '+d.rosterCount+'名　／　選び直す' : 'ファイルを選ぶ（.xlsx / .xlsm / .csv）')+
+        '<input type="file" id="fRos" accept=".xlsx,.xlsm,.csv" style="display:none"></label>'+
+    '</div>'+
+    '<div class="card"><h3>来校予約の取り込み</h3>'+
+      '<p>本部システムの予約Excelを選んでください。同じ予約日の分は置き換わります。</p>'+
+      '<label class="file '+(d.resCount?'set':'')+'" id="lblRes">'+
+        (d.resCount ? '本日 '+d.resCount+'件　／　選び直す' : 'ファイルを選ぶ（.xlsx / .xlsm / .csv）')+
+        '<input type="file" id="fRes" accept=".xlsx,.xlsm,.csv" style="display:none"></label>'+
+    '</div>'+
+    '<div class="card"><h3>生徒用フォームのQRコード</h3>'+
+      '<p>このURLをQRコードにして校舎に掲示してください。合言葉は入っていないので、生徒に見られても受付画面は開けません。</p>'+
+      '<div class="qr">'+esc(EXEC_URL || '（デプロイ後のURLを使ってください）')+'</div>'+
+      '<button class="btn sub" id="btnCopyUrl" style="margin-top:10px">URLをコピー</button>'+
+    '</div>'+
+    '<div class="card"><h3>判定の基準</h3>'+
+      '<div class="row2">'+
+        '<label class="f">遅刻とみなす遅れ（分）<input type="number" id="cLate" value="60" min="5" max="300"></label>'+
+        '<label class="f">要電話とする遅れ（分）<input type="number" id="cCall" value="60" min="5" max="300"></label>'+
+      '</div>'+
+      '<button class="btn sub" id="btnConf">保存する</button>'+
+    '</div>';
+
+  $('fRos').addEventListener('change', function(e){ e.target.files[0] && importRoster(e.target.files[0]); });
+  $('fRes').addEventListener('change', function(e){ e.target.files[0] && importRes(e.target.files[0]); });
+  $('btnCopyUrl').addEventListener('click', function(){
+    if (navigator.clipboard) navigator.clipboard.writeText(EXEC_URL).then(function(){ toast('コピーしました'); });
+  });
+  $('btnConf').addEventListener('click', function(){
+    call('api_saveConf', { conf: {
+      '遅刻とみなす遅れ(分)': Number($('cLate').value),
+      '要電話とする遅れ(分)': Number($('cCall').value)
+    }}).then(function(r){
+      toast(r.ok ? '保存しました' : r.error); load(true);
+    }).catch(function(e){ toast(e.message); });
+  });
+}
+
+/* ---------- 代理登録 ---------- */
+function openProxy(){
+  st.sheetOpen = true;
+  var el = document.createElement('div');
+  el.className = 'sheet'; el.id = 'proxySheet';
+  el.innerHTML = '<div class="sheet-in">'+
+    '<div class="sheet-hd"><b>代理で来校登録</b><button id="pxClose">閉じる</button></div>'+
+    '<div class="sheet-bd" id="pxBody"></div></div>';
+  document.body.appendChild(el);
+  $('pxClose').addEventListener('click', closeProxy);
+  pxStep1();
+}
+function closeProxy(){
+  st.sheetOpen = false;
+  var el = $('proxySheet'); if (el) el.remove();
+  load(true);
+}
+var px = { no:'', name:'', grade:'', purpose:'', booth:'', next:'' };
+function pxStep1(msg){
+  px = { no:'', name:'', grade:'', purpose:'', booth:'', next:'' };
+  $('pxBody').innerHTML = (msg ? '<div class="card" style="background:var(--ng-bg);color:var(--ng);padding:11px 13px;margin-bottom:11px">'+esc(msg)+'</div>' : '')+
+    '<div class="card"><h3>マナビス生番号</h3><p>生徒の番号を入力してください。</p>'+
+    '<label class="f"><input type="tel" inputmode="numeric" id="pxNo" maxlength="8" placeholder="______"></label>'+
+    '<button class="btn" id="pxGo">氏名を確認する</button></div>';
+  $('pxNo').focus();
+  $('pxGo').addEventListener('click', function(){
+    var no = ($('pxNo').value||'').replace(/\D/g,'');
+    if (!no) return pxStep1('生徒番号を入力してください');
+    call('api_lookup', { no:no }).then(function(r){
+      if (!r.ok) return pxStep1(r.error);
+      px.no=r.no; px.name=r.name; px.grade=r.grade;
+      pxStep2(r.already ? '本日は '+r.alreadyAt+' に登録済みです。' : '');
+    }).catch(function(e){ pxStep1(e.message); });
+  });
+}
+function pxStep2(warn){
+  $('pxBody').innerHTML = (warn ? '<div class="card" style="background:var(--warn-bg);color:var(--warn);padding:11px 13px;margin-bottom:11px">'+esc(warn)+'</div>' : '')+
+    '<div class="card"><h3>'+esc(px.name)+' さん</h3><p>'+esc(px.grade)+'</p>'+
+    '<div class="row2" style="margin-bottom:11px">'+
+      '<button class="btn sub" data-p="受講">受講</button>'+
+      '<button class="btn sub" data-p="自習">自習</button></div>'+
+    '<button class="btn warnbtn" id="pxBack">番号を入れ直す</button></div>';
+  $('pxBack').addEventListener('click', function(){ pxStep1(); });
+  $('pxBody').querySelectorAll('[data-p]').forEach(function(b){
+    b.addEventListener('click', function(){ px.purpose = b.dataset.p; pxStep3(); });
+  });
+}
+function pxStep3(msg){
+  $('pxBody').innerHTML = (msg ? '<div class="card" style="background:var(--ng-bg);color:var(--ng);padding:11px 13px;margin-bottom:11px">'+esc(msg)+'</div>' : '')+
+    '<div class="card"><h3>ブース番号</h3><p>'+esc(px.name)+' さん・'+esc(px.purpose)+'</p>'+
+    '<label class="f"><input type="tel" inputmode="numeric" id="pxB" maxlength="3" placeholder="___"></label>'+
+    (px.purpose === '自習'
+      ? '<label class="f">次回の来校予定日<input type="date" id="pxD"></label>' : '')+
+    '<button class="btn" id="pxSave">登録する</button></div>';
+  $('pxB').focus();
+  $('pxSave').addEventListener('click', function(){
+    var b = ($('pxB').value||'').replace(/\D/g,'');
+    var n = Number(b);
+    if (!b || !((n>=1&&n<=2)||(n>=3&&n<=70)||(n>=71&&n<=90)||(n>=101&&n<=120)))
+      return pxStep3('ブース番号が範囲外です（1-2 / 3-70 / 71-90 / 101-120）');
+    var d = $('pxD') ? $('pxD').value : '';
+    if (px.purpose === '自習' && !d) return pxStep3('次回の来校予定日を入力してください');
+    px.booth = b; px.next = d;
+    $('pxSave').disabled = true;
+    call('api_checkin', { no:px.no, purpose:px.purpose, booth:px.booth, nextVisit:px.next, via:'代理', force:true })
+      .then(function(r){
+        if (!r.ok){ $('pxSave').disabled = false; return pxStep3(r.error); }
+        toast(r.name + ' さんを登録しました');
+        closeProxy();
+      }).catch(function(e){ $('pxSave').disabled = false; pxStep3(e.message); });
+  });
+}
+
+/* ---------- Excelの取り込み ---------- */
+function xlDate(v){
+  if (typeof v === 'number'){
+    if (!isFinite(v) || v < 1) return '';
+    // Excelのシリアル値。エポックは1899-12-30。
+    // 1900年を閏年として扱う既知のずれは、下の年範囲チェックで一律に弾かれる。
+    var d = new Date(Date.UTC(1899,11,30) + Math.floor(v)*86400000);
+    var y = d.getUTCFullYear();
+    if (y < 2000 || y > 2100) return '';   // 日付として考えにくい値は取り込まない
+    return y+'-'+('0'+(d.getUTCMonth()+1)).slice(-2)+'-'+('0'+d.getUTCDate()).slice(-2);
+  }
+  var m = String(v||'').match(/(\d{4})\D(\d{1,2})\D(\d{1,2})/);
+  if (!m) return '';
+  var mo = Number(m[2]), da = Number(m[3]);
+  if (mo < 1 || mo > 12 || da < 1 || da > 31) return '';
+  return m[1]+'-'+('0'+mo).slice(-2)+'-'+('0'+da).slice(-2);
+}
+function xlTime(v){
+  if (typeof v === 'number'){
+    if (!isFinite(v) || v < 0) return '';
+    var mins = Math.round((v - Math.floor(v)) * 1440) % 1440;
+    return ('0'+Math.floor(mins/60)).slice(-2)+':'+('0'+(mins%60)).slice(-2);
+  }
+  var m = String(v||'').match(/(\d{1,2}):(\d{2})/);
+  if (!m) return '';
+  if (Number(m[1]) > 23 || Number(m[2]) > 59) return '';
+  return ('0'+m[1]).slice(-2)+':'+m[2];
+}
+
+function readSheet(file){
+  return new Promise(function(res, rej){
+    var fr = new FileReader();
+    fr.onload = function(){
+      try {
+        var wb = XLSX.read(new Uint8Array(fr.result), { type:'array' });
+        var best = null, bestN = -1;
+        wb.SheetNames.forEach(function(n){
+          var rows = XLSX.utils.sheet_to_json(wb.Sheets[n], { header:1, raw:true, defval:'' });
+          var score = rows.length;
+          if (score > bestN){ bestN = score; best = { name:n, rows:rows }; }
+        });
+        res({ wb:wb, pick:best });
+      } catch(e){ rej(new Error('ファイルを読めませんでした')); }
+    };
+    fr.onerror = function(){ rej(new Error('ファイルを読めませんでした')); };
+    fr.readAsArrayBuffer(file);
+  });
+}
+
+/** 見出し行を探し、見出し名から列位置を決める */
+function mapCols(rows, want){
+  for (var r = 0; r < Math.min(rows.length, 10); r++){
+    var head = rows[r].map(function(c){ return String(c==null?'':c).replace(/\s/g,''); });
+    var idx = {}, hit = 0;
+    Object.keys(want).forEach(function(k){
+      for (var c = 0; c < head.length; c++){
+        if (want[k].some(function(p){ return head[c] === p; })){ idx[k] = c; hit++; break; }
+      }
+    });
+    if (hit >= Object.keys(want).length - 1 && idx.no !== undefined) return { headRow:r, idx:idx };
+  }
+  return null;
+}
+
+function importRoster(file){
+  $('lblRos').textContent = '読み込み中…';
+  readSheet(file).then(function(o){
+    // 名簿シートを優先的に探す
+    var pick = o.pick;
+    o.wb.SheetNames.forEach(function(n){
+      if (/名簿/.test(n)) pick = { name:n, rows: XLSX.utils.sheet_to_json(o.wb.Sheets[n], { header:1, raw:true, defval:'' }) };
+    });
+    var m = mapCols(pick.rows, {
+      no:    ['マナビス生番号','生徒番号','番号','生番号'],
+      name:  ['氏名','生徒氏名','名前'],
+      kana:  ['氏名カナ','フリガナ','ふりがな','カナ'],
+      grade: ['学年'],
+      school:['学校名','高校名','在籍校']
+    });
+    if (!m) throw new Error('見出し行が見つかりません（マナビス生番号・氏名の列が必要です）');
+    var items = [];
+    for (var r = m.headRow + 1; r < pick.rows.length; r++){
+      var row = pick.rows[r];
+      var no = String(row[m.idx.no]==null?'':row[m.idx.no]).replace(/\D/g,'');
+      if (!no) continue;
+      items.push({
+        no: no,
+        name:  String(row[m.idx.name]==null?'':row[m.idx.name]).trim(),
+        kana:  m.idx.kana   !== undefined ? String(row[m.idx.kana]||'').trim()   : '',
+        grade: m.idx.grade  !== undefined ? String(row[m.idx.grade]||'').trim()  : '',
+        school:m.idx.school !== undefined ? String(row[m.idx.school]||'').trim() : ''
+      });
+    }
+    if (!items.length) throw new Error('取り込める行がありません');
+    return call('api_importRoster', { items: items });
+  }).then(function(r){
+    if (!r.ok) throw new Error(r.error);
+    toast('名簿を ' + r.count + '名 取り込みました');
+    load(true);
+  }).catch(function(e){ toast(e.message); load(true); });
+}
+
+function importRes(file){
+  $('lblRes').textContent = '読み込み中…';
+  readSheet(file).then(function(o){
+    var pick = o.pick;
+    o.wb.SheetNames.forEach(function(n){
+      if (/予約/.test(n) && !/未予約/.test(n))
+        pick = { name:n, rows: XLSX.utils.sheet_to_json(o.wb.Sheets[n], { header:1, raw:true, defval:'' }) };
+    });
+    var m = mapCols(pick.rows, {
+      no:    ['番号','マナビス生番号','生徒番号','生番号'],
+      name:  ['氏名','生徒氏名','名前'],
+      grade: ['学年'],
+      date:  ['予約日','来校日','日付'],
+      at:    ['予約時刻','来校予定時刻','時刻','時間']
+    });
+    if (!m) throw new Error('見出し行が見つかりません（番号・予約日・予約時刻の列が必要です）');
+    var items = [];
+    for (var r = m.headRow + 1; r < pick.rows.length; r++){
+      var row = pick.rows[r];
+      var no = String(row[m.idx.no]==null?'':row[m.idx.no]).replace(/\D/g,'');
+      var dt = m.idx.date !== undefined ? xlDate(row[m.idx.date]) : '';
+      if (!no || !dt) continue;
+      items.push({
+        no: no, date: dt,
+        name:  String(row[m.idx.name]==null?'':row[m.idx.name]).trim(),
+        grade: m.idx.grade !== undefined ? String(row[m.idx.grade]||'').trim() : '',
+        at:    m.idx.at    !== undefined ? xlTime(row[m.idx.at]) : ''
+      });
+    }
+    if (!items.length) throw new Error('取り込める行がありません');
+    return call('api_importReservations', { items: items });
+  }).then(function(r){
+    if (!r.ok) throw new Error(r.error);
+    toast('予約を ' + r.count + '件 取り込みました（' + r.days.join('・') + '）');
+    load(true);
+  }).catch(function(e){ toast(e.message); load(true); });
+}
+
+/* ---------- 自動更新 ---------- */
+setInterval(function(){
+  if (!st.sheetOpen && document.visibilityState === 'visible') load(true);
+}, 15000);
+document.addEventListener('visibilitychange', function(){
+  if (document.visibilityState === 'visible') load(true);
+});
+
+load();
+</script>
+</body>
+</html>

@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<style>
+  :root{
+    --ink:#12212E; --ink-2:#5A6672; --line:#DFDCD4; --paper:#F5F3EE; --card:#FFF;
+    --accent:#0E6E6B; --accent-dark:#0A514F; --ng:#B23A2E; --ng-bg:#FAE7E4;
+    --ok:#1B7A5A; --ok-bg:#E4F2EC; --warn:#B06A0F; --warn-bg:#FBF0DC;
+    --gothic:-apple-system,"Hiragino Kaku Gothic ProN","Yu Gothic Medium","Noto Sans JP",sans-serif;
+    --num:ui-monospace,"SF Mono",Menlo,monospace;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--gothic);
+    font-size:16px;line-height:1.6;-webkit-font-smoothing:antialiased}
+  header{background:var(--ink);color:#fff;padding:calc(env(safe-area-inset-top) + 12px) 16px 12px}
+  header h1{margin:0;font-size:17px;font-weight:600;letter-spacing:.04em}
+  header p{margin:2px 0 0;font-size:12px;opacity:.75}
+  main{max-width:520px;margin:0 auto;padding:16px 16px calc(32px + env(safe-area-inset-bottom))}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px;margin-bottom:14px}
+  .steps{display:flex;gap:6px;margin-bottom:14px}
+  .steps i{flex:1;height:4px;border-radius:2px;background:#E2DFD7}
+  .steps i.on{background:var(--accent)}
+  h2{margin:0 0 4px;font-size:17px;font-weight:600}
+  .hint{margin:0 0 14px;font-size:13px;color:var(--ink-2)}
+  input[type=text],input[type=tel],input[type=number],input[type=date]{
+    width:100%;padding:14px;border:1px solid var(--line);border-radius:10px;background:#fff;
+    color:var(--ink);font-family:var(--num);font-size:22px;text-align:center}
+  input:focus{outline:2px solid var(--accent);outline-offset:-1px}
+  input[type=date]{font-size:18px}
+  button{font-family:inherit;font-size:16px;cursor:pointer;border:none;background:none;color:inherit}
+  .btn{display:block;width:100%;padding:16px;background:var(--accent);color:#fff;border-radius:10px;
+    font-weight:600;font-size:16px;text-align:center;margin-top:12px}
+  .btn:disabled{background:#B9BEC2}
+  .btn.sub{background:#fff;color:var(--accent);border:1.5px solid #BFD8D6}
+  .btn.ghost{background:none;color:var(--ink-2);border:1px solid var(--line)}
+  .pick{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:4px}
+  .pick button{padding:22px 10px;border:1.5px solid var(--line);border-radius:12px;background:#fff;
+    font-size:17px;font-weight:600}
+  .pick button b{display:block;font-size:19px}
+  .pick button small{display:block;font-size:11.5px;color:var(--ink-2);font-weight:400;margin-top:3px}
+  .pick button.on{border-color:var(--accent);background:#F1F8F7;color:var(--accent)}
+  .confirm{text-align:center;padding:10px 0 4px}
+  .confirm b{display:block;font-size:28px;font-weight:600;letter-spacing:.04em}
+  .confirm small{display:block;color:var(--ink-2);font-size:13px;margin-top:4px}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+  .msg{padding:12px 14px;border-radius:10px;font-size:13.5px;margin-bottom:12px}
+  .msg.err{background:var(--ng-bg);color:var(--ng)}
+  .msg.warn{background:var(--warn-bg);color:var(--warn)}
+  .msg.ok{background:var(--ok-bg);color:var(--ok)}
+  .bands{font-size:12px;color:var(--ink-2);margin-top:10px;line-height:1.8}
+  .bands code{font-family:var(--num);background:#F0EEE7;padding:1px 5px;border-radius:3px}
+  .done{text-align:center;padding:24px 10px}
+  .done .mk{width:62px;height:62px;border-radius:50%;background:var(--ok-bg);color:var(--ok);
+    display:flex;align-items:center;justify-content:center;font-size:32px;margin:0 auto 14px}
+  .done b{display:block;font-size:22px}
+  .done .det{margin-top:16px;font-size:14px;color:var(--ink-2);line-height:2}
+  .done .det span{display:inline-block;min-width:92px;color:var(--ink);font-weight:600}
+  .spin{display:inline-block;width:15px;height:15px;border:2px solid rgba(255,255,255,.4);
+    border-top-color:#fff;border-radius:50%;animation:sp .7s linear infinite;vertical-align:-2px}
+  @keyframes sp{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<header>
+  <h1>来校登録</h1>
+  <p>マナビス新松戸校</p>
+</header>
+<main>
+  <div class="steps" id="steps"></div>
+  <div id="view"></div>
+</main>
+
+<script>
+var PAGE_KEY = '<?= pageKey ?>';
+var st = { step:1, no:'', name:'', grade:'', purpose:'', booth:'', next:'', reservedAt:'', busy:false };
+var $ = function(id){ return document.getElementById(id); };
+var esc = function(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){
+  return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); };
+
+function call(fn, req){
+  return new Promise(function(res, rej){
+    google.script.run.withSuccessHandler(res).withFailureHandler(function(e){
+      rej(new Error(e && e.message ? e.message : '通信できませんでした')); })[fn](req);
+  });
+}
+
+function totalSteps(){ return st.purpose === '自習' ? 5 : 4; }
+
+function renderSteps(){
+  var n = totalSteps(), h = '';
+  for (var i=1;i<=n;i++) h += '<i class="'+(i<=st.step?'on':'')+'"></i>';
+  $('steps').innerHTML = h;
+  $('steps').style.display = st.step > n ? 'none' : 'flex';
+}
+
+function render(msg){
+  renderSteps();
+  var v = $('view');
+  var m = msg ? '<div class="msg '+msg[0]+'">'+esc(msg[1])+'</div>' : '';
+
+  if (st.step === 1){
+    v.innerHTML = '<div class="card">'+m+
+      '<h2>マナビス生番号</h2>'+
+      '<p class="hint">6桁の番号を入力してください。</p>'+
+      '<input type="tel" id="inNo" inputmode="numeric" maxlength="8" placeholder="______" value="'+esc(st.no)+'">'+
+      '<button class="btn" id="go">次へ</button></div>';
+    $('inNo').focus();
+    $('inNo').addEventListener('keydown', function(e){ if(e.key==='Enter') $('go').click(); });
+    $('go').addEventListener('click', lookup);
+
+  } else if (st.step === 2){
+    v.innerHTML = '<div class="card">'+m+
+      '<h2>お名前の確認</h2>'+
+      '<p class="hint">この方で合っていますか？</p>'+
+      '<div class="confirm"><b>'+esc(st.name)+'</b><small>'+esc(st.grade)+
+        (st.reservedAt ? '　予約 '+esc(st.reservedAt) : '')+'</small></div>'+
+      '<button class="btn" id="yes">はい、これで登録します</button>'+
+      '<button class="btn ghost" id="no">いいえ、番号を入れ直す</button></div>';
+    $('yes').addEventListener('click', function(){ st.step=3; render(); });
+    $('no').addEventListener('click', function(){ st.no=''; st.step=1; render(); });
+
+  } else if (st.step === 3){
+    v.innerHTML = '<div class="card">'+m+
+      '<h2>今日の利用</h2>'+
+      '<p class="hint">どちらで来校しましたか？</p>'+
+      '<div class="pick">'+
+        '<button data-p="受講" class="'+(st.purpose==='受講'?'on':'')+'"><b>受講</b><small>映像受講をする</small></button>'+
+        '<button data-p="自習" class="'+(st.purpose==='自習'?'on':'')+'"><b>自習</b><small>自習のみ</small></button>'+
+      '</div></div>';
+    v.querySelectorAll('.pick button').forEach(function(b){
+      b.addEventListener('click', function(){ st.purpose=b.dataset.p; st.step=4; render(); });
+    });
+
+  } else if (st.step === 4){
+    v.innerHTML = '<div class="card">'+m+
+      '<h2>ブース番号</h2>'+
+      '<p class="hint">座る席の番号を入力してください。</p>'+
+      '<input type="tel" id="inB" inputmode="numeric" maxlength="3" placeholder="___" value="'+esc(st.booth)+'">'+
+      '<div class="bands">'+
+        '<code>1〜2</code> 音読ブース<br>'+
+        '<code>3〜70</code> 受講ブース（パソコンあり）<br>'+
+        '<code>71〜90</code> 自習ブース（パソコンなし）<br>'+
+        '<code>101〜120</code> 自習室</div>'+
+      '<button class="btn" id="go">'+(st.purpose==='自習'?'次へ':'この内容で登録する')+'</button>'+
+      '<button class="btn ghost" id="back">戻る</button></div>';
+    $('inB').focus();
+    $('inB').addEventListener('keydown', function(e){ if(e.key==='Enter') $('go').click(); });
+    $('back').addEventListener('click', function(){ st.step=3; render(); });
+    $('go').addEventListener('click', function(){
+      var b = ($('inB').value||'').replace(/\D/g,'');
+      if (!b) return render(['err','ブース番号を入力してください']);
+      var n = Number(b);
+      var ok = (n>=1&&n<=2)||(n>=3&&n<=70)||(n>=71&&n<=90)||(n>=101&&n<=120);
+      if (!ok) return render(['err','その番号の席はありません。もう一度確認してください']);
+      st.booth = b;
+      if (st.purpose === '自習'){ st.step=5; render(); } else submit();
+    });
+
+  } else if (st.step === 5){
+    v.innerHTML = '<div class="card">'+m+
+      '<h2>次回の来校予定</h2>'+
+      '<p class="hint">自習の場合は次回予約が取れないため、次に来る予定の日を入力してください。</p>'+
+      '<input type="date" id="inD" value="'+esc(st.next)+'" min="'+todayStr()+'">'+
+      '<button class="btn" id="go">この内容で登録する</button>'+
+      '<button class="btn ghost" id="back">戻る</button></div>';
+    $('back').addEventListener('click', function(){ st.step=4; render(); });
+    $('go').addEventListener('click', function(){
+      var d = $('inD').value;
+      if (!d) return render(['err','次回の来校予定日を入力してください']);
+      st.next = d; submit();
+    });
+  }
+}
+
+function todayStr(){
+  var d = new Date();
+  return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2);
+}
+
+function lookup(){
+  var no = ($('inNo').value||'').replace(/\D/g,'');
+  if (!no) return render(['err','生徒番号を入力してください']);
+  if (st.busy) return;
+  st.busy = true;
+  $('go').disabled = true;
+  $('go').innerHTML = '<span class="spin"></span> 確認中';
+  call('api_lookup', { no:no, pageKey:PAGE_KEY }).then(function(r){
+    st.busy = false;
+    if (!r.ok) { st.no = no; return render(['err', r.error]); }
+    st.no=r.no; st.name=r.name; st.grade=r.grade; st.reservedAt=r.reservedAt;
+    st.step = 2;
+    render(r.already ? ['warn','本日は '+r.alreadyAt+' に登録済みです。重複して登録すると受付が混乱するため、スタッフに声をかけてください。'] : null);
+  }).catch(function(e){
+    st.busy = false; st.no = no; render(['err', e.message]);
+  });
+}
+
+function submit(){
+  if (st.busy) return;
+  st.busy = true;
+  var v = $('view');
+  v.innerHTML = '<div class="card"><div class="done"><div class="mk"><span class="spin" style="border-color:rgba(27,122,90,.3);border-top-color:#1B7A5A"></span></div><b>登録しています</b></div></div>';
+  call('api_checkin', {
+    no:st.no, purpose:st.purpose, booth:st.booth, nextVisit:st.next, pageKey:PAGE_KEY
+  }).then(function(r){
+    st.busy = false;
+    if (!r.ok){
+      if (r.dup){ st.step = 4; return render(['err','本日はすでに登録されています。スタッフに声をかけてください。']); }
+      st.step = 4; return render(['err', r.error]);
+    }
+    done(r);
+  }).catch(function(e){
+    st.busy = false; st.step = 4; render(['err', e.message]);
+  });
+}
+
+function done(r){
+  $('steps').style.display = 'none';
+  $('view').innerHTML = '<div class="card"><div class="done">'+
+    '<div class="mk">✓</div>'+
+    '<b>'+esc(r.name)+' さん</b>'+
+    '<p class="hint" style="margin:6px 0 0">来校を登録しました。</p>'+
+    '<div class="det">'+
+      '<div><span>利用</span>'+esc(st.purpose)+'</div>'+
+      '<div><span>ブース</span>'+esc(String(r.booth))+'番（'+esc(r.boothKind)+'）</div>'+
+      (st.next ? '<div><span>次回予定</span>'+esc(st.next)+'</div>' : '')+
+      (r.status==='遅刻' ? '<div style="color:#B06A0F"><span>状況</span>遅刻として記録</div>' : '')+
+    '</div>'+
+    '<p class="hint" style="margin-top:18px">受講ファイルは受付でお渡しします。<br>'+
+    '受付に誰もいない場合は、そのまま席に向かってください。スタッフが席までお持ちします。</p>'+
+    '</div></div>'+
+    '<button class="btn sub" id="again">続けて別の生徒が登録する</button>';
+  $('again').addEventListener('click', function(){
+    st = { step:1, no:'', name:'', grade:'', purpose:'', booth:'', next:'', reservedAt:'', busy:false };
+    render();
+  });
+}
+
+render();
+</script>
+</body>
+</html>
