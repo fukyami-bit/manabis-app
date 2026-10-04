@@ -88,6 +88,18 @@
     color:#fff;padding:11px 18px;border-radius:999px;font-size:13.5px;z-index:1300;opacity:0;
     transition:opacity .2s;pointer-events:none;white-space:nowrap;max-width:92vw}
   .toast.show{opacity:1}
+  textarea{width:100%;min-height:96px;padding:10px;border:1px solid var(--line);border-radius:9px;
+    background:#fff;color:var(--ink);font-family:var(--num);font-size:12px;resize:vertical}
+  textarea:focus{outline:2px solid var(--accent);outline-offset:-1px}
+  .pv{margin-top:11px;padding:11px 13px;border-radius:9px;font-size:12.5px}
+  .pv.ok{background:var(--ok-bg);color:var(--ok)}
+  .pv.err{background:var(--ng-bg);color:var(--ng)}
+  .pv b{font-size:14px}
+  table.pvt{width:100%;border-collapse:collapse;font-size:11.5px;background:#fff;color:var(--ink);
+    margin-top:6px;border-radius:6px;overflow:hidden}
+  table.pvt th{background:#EDEBE4;padding:4px 5px;font-weight:600;text-align:left;white-space:nowrap}
+  table.pvt td{border-top:1px solid #EEEBE4;padding:4px 5px;white-space:nowrap;overflow:hidden;
+    text-overflow:ellipsis;max-width:110px}
   .qr{font-size:12px;color:var(--ink-2);word-break:break-all;font-family:var(--num);background:#F0EEE7;
     padding:9px 11px;border-radius:8px;line-height:1.5}
 </style>
@@ -311,17 +323,28 @@ function renderData(v){
   var d = st.data;
   v.innerHTML =
     '<div class="card"><h3>生徒名簿の取り込み</h3>'+
-      '<p>本部システムの名簿Excelを選んでください。生徒番号・氏名・氏名カナ・学年・高校名だけを送ります。'+
+      '<p>本部システムの顧客情報一覧を取り込みます。'+
+      '<b>生徒番号・氏名・氏名カナ・学年・高校名だけ</b>を送ります。'+
       '保護者氏名・住所・電話番号・生年月日はこの端末から出ません。</p>'+
-      '<label class="file '+(d.rosterCount?'set':'')+'" id="lblRos">'+
-        (d.rosterCount ? '登録済み '+d.rosterCount+'名　／　選び直す' : 'ファイルを選ぶ（.xlsx / .xlsm / .csv）')+
+      '<p style="color:var(--ink)">'+(d.rosterCount ? '現在 '+d.rosterCount+'名 登録済み' : 'まだ登録されていません')+'</p>'+
+      '<label class="file" id="lblRos">ファイルを選ぶ（.xlsx / .xlsm / .csv）'+
         '<input type="file" id="fRos" accept=".xlsx,.xlsm,.csv" style="display:none"></label>'+
+      '<p style="margin:11px 0 5px">または、本部システムの画面をコピーして下に貼り付け</p>'+
+      '<textarea id="paRos" placeholder="ここに貼り付け（Ctrl+V）"></textarea>'+
+      '<button class="btn sub" id="btnRos">貼り付けた内容を確認する</button>'+
+      '<div id="pvRos"></div>'+
     '</div>'+
     '<div class="card"><h3>来校予約の取り込み</h3>'+
-      '<p>本部システムの予約Excelを選んでください。同じ予約日の分は置き換わります。</p>'+
-      '<label class="file '+(d.resCount?'set':'')+'" id="lblRes">'+
-        (d.resCount ? '本日 '+d.resCount+'件　／　選び直す' : 'ファイルを選ぶ（.xlsx / .xlsm / .csv）')+
+      '<p>同じ予約日の分は置き換わるので、日中に貼り直しても二重になりません。</p>'+
+      '<p style="color:var(--ink)">'+(d.resCount ? '本日 '+d.resCount+'件 登録済み' : '本日の予約はまだありません')+'</p>'+
+      '<label class="file" id="lblRes">ファイルを選ぶ（.xlsx / .xlsm / .csv）'+
         '<input type="file" id="fRes" accept=".xlsx,.xlsm,.csv" style="display:none"></label>'+
+      '<p style="margin:11px 0 5px">または、本部システムの画面をコピーして下に貼り付け</p>'+
+      '<textarea id="paRes" placeholder="ここに貼り付け（Ctrl+V）"></textarea>'+
+      '<label class="f" style="margin-top:8px">貼り付けた表に予約日の列が無い場合に使う日付'+
+        '<input type="date" id="resDate" value="'+esc(d.date)+'"></label>'+
+      '<button class="btn sub" id="btnRes">貼り付けた内容を確認する</button>'+
+      '<div id="pvRes"></div>'+
     '</div>'+
     '<div class="card"><h3>生徒用フォームのQRコード</h3>'+
       '<p>このURLをQRコードにして校舎に掲示してください。合言葉は入っていないので、生徒に見られても受付画面は開けません。</p>'+
@@ -336,8 +359,10 @@ function renderData(v){
       '<button class="btn sub" id="btnConf">保存する</button>'+
     '</div>';
 
-  $('fRos').addEventListener('change', function(e){ e.target.files[0] && importRoster(e.target.files[0]); });
-  $('fRes').addEventListener('change', function(e){ e.target.files[0] && importRes(e.target.files[0]); });
+  $('fRos').addEventListener('change', function(e){ e.target.files[0] && importFile(e.target.files[0], 'roster'); });
+  $('fRes').addEventListener('change', function(e){ e.target.files[0] && importFile(e.target.files[0], 'res'); });
+  $('btnRos').addEventListener('click', function(){ preview('roster'); });
+  $('btnRes').addEventListener('click', function(){ preview('res'); });
   $('btnCopyUrl').addEventListener('click', function(){
     if (navigator.clipboard) navigator.clipboard.writeText(EXEC_URL).then(function(){ toast('コピーしました'); });
   });
@@ -348,6 +373,64 @@ function renderData(v){
     }}).then(function(r){
       toast(r.ok ? '保存しました' : r.error); load(true);
     }).catch(function(e){ toast(e.message); });
+  });
+}
+
+/* ---------- 貼り付けの確認と取り込み ---------- */
+var pending = { roster:null, res:null };
+
+function preview(kind){
+  var ta = $(kind === 'roster' ? 'paRos' : 'paRes');
+  var box = $(kind === 'roster' ? 'pvRos' : 'pvRes');
+  var rows = parseTable(ta.value);
+  if (rows.length < 2){
+    box.innerHTML = '<div class="pv err">表として読み取れませんでした。本部システムの画面で表を選択してコピーし直してください。</div>';
+    return;
+  }
+  var fallback = kind === 'res' ? $('resDate').value : '';
+  var r = kind === 'roster' ? detectRoster(rows) : detectRes(rows, fallback);
+  pending[kind] = r.items;
+  box.innerHTML = reportHtml(r, kind);
+  var b = $('pvGo-' + kind);
+  if (b) b.addEventListener('click', function(){ send(kind); });
+}
+
+function reportHtml(r, kind){
+  if (!r.items.length){
+    return '<div class="pv err"><b>取り込める行がありませんでした</b>'+
+      '<div>'+esc(r.note)+'</div></div>';
+  }
+  var head = kind === 'roster' ? ['生徒番号','氏名','カナ','学年','高校名'] : ['生徒番号','氏名','学年','予約日','予約時刻'];
+  var keys = kind === 'roster' ? ['no','name','kana','grade','school'] : ['no','name','grade','date','at'];
+  var sample = r.items.slice(0, 3);
+  return '<div class="pv ok">'+
+    '<b>'+r.items.length+'件 読み取れました</b>'+
+    '<div style="margin:5px 0 8px">'+esc(r.note)+'</div>'+
+    '<table class="pvt"><tr>'+head.map(function(h){ return '<th>'+h+'</th>'; }).join('')+'</tr>'+
+      sample.map(function(it){
+        return '<tr>'+keys.map(function(k){ return '<td>'+esc(it[k]||'—')+'</td>'; }).join('')+'</tr>';
+      }).join('')+
+    '</table>'+
+    '<p style="margin:8px 0 0;font-size:12px">この3件が正しければ取り込んでください。ずれていたら、本部システムで表の見出しごとコピーし直すと精度が上がります。</p>'+
+    '<button class="btn" id="pvGo-'+kind+'" style="margin-top:9px">この内容で取り込む</button>'+
+    '</div>';
+}
+
+function send(kind){
+  var items = pending[kind];
+  if (!items || !items.length) return;
+  var b = $('pvGo-' + kind);
+  if (b){ b.disabled = true; b.textContent = '取り込んでいます…'; }
+  var fn = kind === 'roster' ? 'api_importRoster' : 'api_importReservations';
+  call(fn, { items: items }).then(function(r){
+    if (!r.ok) throw new Error(r.error);
+    toast(kind === 'roster' ? ('名簿を ' + r.count + '名 取り込みました')
+                            : ('予約を ' + r.count + '件 取り込みました（' + r.days.join('・') + '）'));
+    pending[kind] = null;
+    load(true);
+  }).catch(function(e){
+    toast(e.message);
+    if (b){ b.disabled = false; b.textContent = 'この内容で取り込む'; }
   });
 }
 
@@ -424,7 +507,8 @@ function pxStep3(msg){
   });
 }
 
-/* ---------- Excelの取り込み ---------- */
+/* ---------- 表の読み取り ---------- */
+
 function xlDate(v){
   if (typeof v === 'number'){
     if (!isFinite(v) || v < 1) return '';
@@ -435,11 +519,21 @@ function xlDate(v){
     if (y < 2000 || y > 2100) return '';   // 日付として考えにくい値は取り込まない
     return y+'-'+('0'+(d.getUTCMonth()+1)).slice(-2)+'-'+('0'+d.getUTCDate()).slice(-2);
   }
-  var m = String(v||'').match(/(\d{4})\D(\d{1,2})\D(\d{1,2})/);
-  if (!m) return '';
-  var mo = Number(m[2]), da = Number(m[3]);
-  if (mo < 1 || mo > 12 || da < 1 || da > 31) return '';
-  return m[1]+'-'+('0'+mo).slice(-2)+'-'+('0'+da).slice(-2);
+  var s = String(v==null?'':v).trim();
+  var m = s.match(/(\d{4})\D(\d{1,2})\D(\d{1,2})/);
+  if (m){
+    var mo = Number(m[2]), da = Number(m[3]);
+    if (mo < 1 || mo > 12 || da < 1 || da > 31) return '';
+    return m[1]+'-'+('0'+mo).slice(-2)+'-'+('0'+da).slice(-2);
+  }
+  // 年のない「10/4」「10月4日」は、画面に年が出ない本部システムの表に備えて今年とみなす
+  var m2 = s.match(/^(\d{1,2})\D{1,2}(\d{1,2})\D?$/);
+  if (m2){
+    var mo2 = Number(m2[1]), da2 = Number(m2[2]);
+    if (mo2 < 1 || mo2 > 12 || da2 < 1 || da2 > 31) return '';
+    return new Date().getFullYear()+'-'+('0'+mo2).slice(-2)+'-'+('0'+da2).slice(-2);
+  }
+  return '';
 }
 function xlTime(v){
   if (typeof v === 'number'){
@@ -447,11 +541,223 @@ function xlTime(v){
     var mins = Math.round((v - Math.floor(v)) * 1440) % 1440;
     return ('0'+Math.floor(mins/60)).slice(-2)+':'+('0'+(mins%60)).slice(-2);
   }
-  var m = String(v||'').match(/(\d{1,2}):(\d{2})/);
+  var m = String(v==null?'':v).match(/(\d{1,2}):(\d{2})/);
   if (!m) return '';
   if (Number(m[1]) > 23 || Number(m[2]) > 59) return '';
   return ('0'+m[1]).slice(-2)+':'+m[2];
 }
+
+/** 貼り付けられた文字列を表にする。区切りはタブ優先、無ければカンマ。 */
+function parseTable(text){
+  var lines = String(text==null?'':text).replace(/\r\n/g,'\n').replace(/\r/g,'\n').split('\n')
+    .filter(function(l){ return l.trim() !== ''; });
+  if (!lines.length) return [];
+  var sep = lines.filter(function(l){ return l.indexOf('\t') >= 0; }).length >= lines.length/2 ? '\t'
+          : (lines.filter(function(l){ return l.indexOf(',') >= 0; }).length >= lines.length/2 ? ',' : null);
+  if (!sep) return [];
+  return lines.map(function(l){
+    return l.split(sep).map(function(c){ return String(c).replace(/^"|"$/g,'').trim(); });
+  });
+}
+
+var HEADER_WORDS = /氏名|名前|番号|学年|予約日|予約時刻|校舎|カナ|学校|在籍|講座/;
+
+/** 先頭の見出し行を取り除き、見出しがあれば列名も返す */
+function stripHeader(rows){
+  if (!rows.length) return { head:null, body:rows };
+  var first = rows[0].map(function(c){ return String(c).replace(/[\s　]/g,''); });
+  var hits = first.filter(function(c){ return HEADER_WORDS.test(c); }).length;
+  return hits >= 2 ? { head:first, body:rows.slice(1) } : { head:null, body:rows };
+}
+
+function width(rows){
+  var w = 0;
+  rows.forEach(function(r){ if (r.length > w) w = r.length; });
+  return w;
+}
+
+/** 条件に最もよく当てはまる列を選ぶ。該当が7割未満の列は選ばない。 */
+function pickCol(rows, test, skip){
+  var w = width(rows), best = -1, bestHit = 0;
+  for (var c = 0; c < w; c++){
+    if (skip && skip.indexOf(c) >= 0) continue;
+    var hit = 0, tot = 0;
+    for (var i = 0; i < rows.length; i++){
+      var v = rows[i][c];
+      if (v === undefined || String(v).trim() === '') continue;
+      tot++; if (test(String(v).trim())) hit++;
+    }
+    if (tot >= Math.max(1, rows.length * 0.5) && hit >= tot * 0.7 && hit > bestHit){ bestHit = hit; best = c; }
+  }
+  return best;
+}
+
+/** 文字列の列のうち、異なり数が最も多いものを選ぶ（氏名を見つけるため） */
+function pickTextCol(rows, skip, maxDistinctRatio){
+  var w = width(rows), best = -1, bestD = 1;
+  for (var c = 0; c < w; c++){
+    if (skip && skip.indexOf(c) >= 0) continue;
+    var vals = {}, tot = 0, txt = 0;
+    for (var i = 0; i < rows.length; i++){
+      var s = String(rows[i][c] == null ? '' : rows[i][c]).trim();
+      if (!s) continue;
+      tot++;
+      if (/[^\d\-\/:.]/.test(s) && s.length <= 20){ txt++; vals[s] = 1; }
+    }
+    if (!tot || txt < tot * 0.8) continue;
+    var d = Object.keys(vals).length;
+    if (maxDistinctRatio && d > tot * maxDistinctRatio) continue;
+    if (d > bestD){ bestD = d; best = c; }
+  }
+  return best;
+}
+
+/**
+ * 生徒番号の列を選ぶ。数字の並びというだけでは校舎コードのような
+ * 全員共通の値を拾ってしまうため、識別子として値がほぼ行ごとに
+ * 異なることを条件に加える。
+ */
+function pickIdCol(rows){
+  var w = width(rows), best = -1, bestD = 0;
+  for (var c = 0; c < w; c++){
+    var vals = {}, tot = 0, hit = 0;
+    for (var i = 0; i < rows.length; i++){
+      var v = rows[i][c];
+      if (v === undefined || String(v).trim() === '') continue;
+      var sv = String(v).trim();
+      tot++;
+      if (isNo(sv)){ hit++; vals[sv.replace(/[\s　,]/g,'')] = 1; }
+    }
+    if (tot < Math.max(1, rows.length * 0.5) || hit < tot * 0.9) continue;
+    var d = Object.keys(vals).length;
+    if (d < Math.max(2, tot * 0.8)) continue;      // 全行同じ値の列は識別子ではない
+    if (d > bestD){ bestD = d; best = c; }
+  }
+  return best;
+}
+
+/**
+ * 氏名の列を選ぶ。名簿には保護者氏名も入っており、異なり数だけで選ぶと取り違える。
+ * どちらの表でも氏名は生徒番号のすぐ右にあるため、右隣から探して最初に見つかった
+ * テキスト列を優先する。見つからなければ異なり数で選ぶ。
+ */
+function pickNameCol(rows, skip, noCol){
+  if (noCol >= 0){
+    var w = width(rows);
+    for (var c = noCol + 1; c < w; c++){
+      if (skip && skip.indexOf(c) >= 0) continue;
+      var vals = {}, tot = 0, txt = 0;
+      for (var i = 0; i < rows.length; i++){
+        var s = String(rows[i][c] == null ? '' : rows[i][c]).trim();
+        if (!s) continue;
+        tot++;
+        if (/[^\d\-\/:.]/.test(s) && s.length <= 20){ txt++; vals[s] = 1; }
+      }
+      if (!tot || txt < tot * 0.8) continue;
+      // 校舎名のように全員同じ値の列は氏名ではない
+      if (Object.keys(vals).length < Math.max(2, tot * 0.5)) continue;
+      return c;
+    }
+  }
+  return pickTextCol(rows, skip);
+}
+
+var isNo    = function(v){ return /^\d{4,9}$/.test(v.replace(/[\s　,]/g,'')); };
+var isGrade = function(v){ return /^(高|中|小)[0-9０-９一二三１２３]$|^(既卒|高卒)$/.test(v); };
+var isKana  = function(v){ return /^[ァ-ヶー][ァ-ヶー\s　]*$/.test(v); };
+var isDate  = function(v){ return xlDate(v) !== ''; };
+var isTime  = function(v){ return xlTime(v) !== ''; };
+var isSchool = function(v){ return /(高校|高等学校|中学|学園|学院)$/.test(v); };
+
+function colName(i){ return i < 0 ? '—' : (i + 1) + '列目'; }
+
+/** 生徒名簿の列を決める */
+function detectRoster(rows){
+  var h = stripHeader(rows), body = h.body, idx = {};
+  if (h.head){
+    var want = { no:['マナビス生番号','生徒番号','番号','生番号'], name:['氏名','生徒氏名','名前'],
+                 kana:['氏名カナ','フリガナ','ふりがな','カナ'], grade:['学年'], school:['学校名','高校名','在籍校'] };
+    Object.keys(want).forEach(function(k){
+      for (var c = 0; c < h.head.length; c++){
+        if (want[k].indexOf(h.head[c]) >= 0){ idx[k] = c; return; }
+      }
+    });
+  }
+  var used = [];
+  function set(k, c){ if (idx[k] === undefined && c >= 0){ idx[k] = c; } if (idx[k] !== undefined) used.push(idx[k]); }
+  set('no',    pickIdCol(body));
+  set('grade', pickCol(body, isGrade, used));
+  set('kana',  pickCol(body, isKana, used));
+  set('school',pickCol(body, isSchool, used));
+  set('name',  pickNameCol(body, used, idx.no === undefined ? -1 : idx.no));
+
+  var items = [];
+  body.forEach(function(r){
+    var no = String(r[idx.no] == null ? '' : r[idx.no]).replace(/\D/g,'');
+    if (!no) return;
+    items.push({
+      no: no,
+      name:   idx.name   !== undefined ? String(r[idx.name]   || '').trim() : '',
+      kana:   idx.kana   !== undefined ? String(r[idx.kana]   || '').trim() : '',
+      grade:  idx.grade  !== undefined ? String(r[idx.grade]  || '').trim() : '',
+      school: idx.school !== undefined ? String(r[idx.school] || '').trim() : ''
+    });
+  });
+  var note = '生徒番号=' + colName(idx.no === undefined ? -1 : idx.no) +
+             '　氏名=' + colName(idx.name === undefined ? -1 : idx.name) +
+             '　カナ=' + colName(idx.kana === undefined ? -1 : idx.kana) +
+             '　学年=' + colName(idx.grade === undefined ? -1 : idx.grade) +
+             '　高校名=' + colName(idx.school === undefined ? -1 : idx.school);
+  if (idx.no === undefined) note = '生徒番号らしい列（4〜9桁の数字）が見つかりませんでした。';
+  else if (idx.name === undefined) note += '　※氏名の列が特定できませんでした';
+  return { items: items, note: note, idx: idx };
+}
+
+/** 来校予約の列を決める。日付の列が無ければ fallbackDate を使う。 */
+function detectRes(rows, fallbackDate){
+  var h = stripHeader(rows), body = h.body, idx = {};
+  if (h.head){
+    var want = { no:['番号','マナビス生番号','生徒番号','生番号'], name:['氏名','生徒氏名','名前'],
+                 grade:['学年'], date:['予約日','来校日','日付'], at:['予約時刻','来校予定時刻','時刻','時間'] };
+    Object.keys(want).forEach(function(k){
+      for (var c = 0; c < h.head.length; c++){
+        if (want[k].indexOf(h.head[c]) >= 0){ idx[k] = c; return; }
+      }
+    });
+  }
+  var used = [];
+  function set(k, c){ if (idx[k] === undefined && c >= 0){ idx[k] = c; } if (idx[k] !== undefined) used.push(idx[k]); }
+  set('no',    pickIdCol(body));
+  set('at',    pickCol(body, isTime, used));
+  set('date',  pickCol(body, isDate, used));
+  set('grade', pickCol(body, isGrade, used));
+  set('name',  pickNameCol(body, used, idx.no === undefined ? -1 : idx.no));
+
+  var items = [];
+  body.forEach(function(r){
+    var no = String(r[idx.no] == null ? '' : r[idx.no]).replace(/\D/g,'');
+    if (!no) return;
+    var dt = idx.date !== undefined ? xlDate(r[idx.date]) : '';
+    if (!dt) dt = fallbackDate || '';
+    if (!dt) return;
+    items.push({
+      no: no, date: dt,
+      name:  idx.name  !== undefined ? String(r[idx.name] || '').trim() : '',
+      grade: idx.grade !== undefined ? String(r[idx.grade] || '').trim() : '',
+      at:    idx.at    !== undefined ? xlTime(r[idx.at]) : ''
+    });
+  });
+  var note = '生徒番号=' + colName(idx.no === undefined ? -1 : idx.no) +
+             '　氏名=' + colName(idx.name === undefined ? -1 : idx.name) +
+             '　学年=' + colName(idx.grade === undefined ? -1 : idx.grade) +
+             '　予約日=' + (idx.date === undefined ? '列なし（下の日付を使用）' : colName(idx.date)) +
+             '　予約時刻=' + colName(idx.at === undefined ? -1 : idx.at);
+  if (idx.no === undefined) note = '生徒番号らしい列（4〜9桁の数字）が見つかりませんでした。';
+  else if (idx.at === undefined) note += '　※予約時刻の列が特定できません。遅刻と要電話の判定ができなくなります';
+  return { items: items, note: note, idx: idx };
+}
+
+/* ---------- ファイルからの取り込み ---------- */
 
 function readSheet(file){
   return new Promise(function(res, rej){
@@ -459,13 +765,7 @@ function readSheet(file){
     fr.onload = function(){
       try {
         var wb = XLSX.read(new Uint8Array(fr.result), { type:'array' });
-        var best = null, bestN = -1;
-        wb.SheetNames.forEach(function(n){
-          var rows = XLSX.utils.sheet_to_json(wb.Sheets[n], { header:1, raw:true, defval:'' });
-          var score = rows.length;
-          if (score > bestN){ bestN = score; best = { name:n, rows:rows }; }
-        });
-        res({ wb:wb, pick:best });
+        res(wb);
       } catch(e){ rej(new Error('ファイルを読めませんでした')); }
     };
     fr.onerror = function(){ rej(new Error('ファイルを読めませんでした')); };
@@ -473,95 +773,31 @@ function readSheet(file){
   });
 }
 
-/** 見出し行を探し、見出し名から列位置を決める */
-function mapCols(rows, want){
-  for (var r = 0; r < Math.min(rows.length, 10); r++){
-    var head = rows[r].map(function(c){ return String(c==null?'':c).replace(/\s/g,''); });
-    var idx = {}, hit = 0;
-    Object.keys(want).forEach(function(k){
-      for (var c = 0; c < head.length; c++){
-        if (want[k].some(function(p){ return head[c] === p; })){ idx[k] = c; hit++; break; }
-      }
-    });
-    if (hit >= Object.keys(want).length - 1 && idx.no !== undefined) return { headRow:r, idx:idx };
-  }
-  return null;
+function sheetRows(wb, name){
+  return XLSX.utils.sheet_to_json(wb.Sheets[name], { header:1, raw:true, defval:'' })
+    .filter(function(r){ return r.some(function(c){ return String(c==null?'':c).trim() !== ''; }); });
 }
 
-function importRoster(file){
-  $('lblRos').textContent = '読み込み中…';
-  readSheet(file).then(function(o){
-    // 名簿シートを優先的に探す
-    var pick = o.pick;
-    o.wb.SheetNames.forEach(function(n){
-      if (/名簿/.test(n)) pick = { name:n, rows: XLSX.utils.sheet_to_json(o.wb.Sheets[n], { header:1, raw:true, defval:'' }) };
+function importFile(file, kind){
+  $(kind === 'roster' ? 'lblRos' : 'lblRes').textContent = '読み込み中…';
+  readSheet(file).then(function(wb){
+    // 目的に合うシートを選ぶ。無ければ行数が最も多いシート。
+    var pick = null, bestN = -1;
+    wb.SheetNames.forEach(function(n){
+      var rows = sheetRows(wb, n);
+      var want = kind === 'roster' ? /名簿|顧客/.test(n) : (/予約/.test(n) && !/未予約/.test(n));
+      var score = rows.length + (want ? 100000 : 0);
+      if (score > bestN){ bestN = score; pick = rows; }
     });
-    var m = mapCols(pick.rows, {
-      no:    ['マナビス生番号','生徒番号','番号','生番号'],
-      name:  ['氏名','生徒氏名','名前'],
-      kana:  ['氏名カナ','フリガナ','ふりがな','カナ'],
-      grade: ['学年'],
-      school:['学校名','高校名','在籍校']
-    });
-    if (!m) throw new Error('見出し行が見つかりません（マナビス生番号・氏名の列が必要です）');
-    var items = [];
-    for (var r = m.headRow + 1; r < pick.rows.length; r++){
-      var row = pick.rows[r];
-      var no = String(row[m.idx.no]==null?'':row[m.idx.no]).replace(/\D/g,'');
-      if (!no) continue;
-      items.push({
-        no: no,
-        name:  String(row[m.idx.name]==null?'':row[m.idx.name]).trim(),
-        kana:  m.idx.kana   !== undefined ? String(row[m.idx.kana]||'').trim()   : '',
-        grade: m.idx.grade  !== undefined ? String(row[m.idx.grade]||'').trim()  : '',
-        school:m.idx.school !== undefined ? String(row[m.idx.school]||'').trim() : ''
-      });
-    }
-    if (!items.length) throw new Error('取り込める行がありません');
-    return call('api_importRoster', { items: items });
-  }).then(function(r){
-    if (!r.ok) throw new Error(r.error);
-    toast('名簿を ' + r.count + '名 取り込みました');
-    load(true);
-  }).catch(function(e){ toast(e.message); load(true); });
-}
-
-function importRes(file){
-  $('lblRes').textContent = '読み込み中…';
-  readSheet(file).then(function(o){
-    var pick = o.pick;
-    o.wb.SheetNames.forEach(function(n){
-      if (/予約/.test(n) && !/未予約/.test(n))
-        pick = { name:n, rows: XLSX.utils.sheet_to_json(o.wb.Sheets[n], { header:1, raw:true, defval:'' }) };
-    });
-    var m = mapCols(pick.rows, {
-      no:    ['番号','マナビス生番号','生徒番号','生番号'],
-      name:  ['氏名','生徒氏名','名前'],
-      grade: ['学年'],
-      date:  ['予約日','来校日','日付'],
-      at:    ['予約時刻','来校予定時刻','時刻','時間']
-    });
-    if (!m) throw new Error('見出し行が見つかりません（番号・予約日・予約時刻の列が必要です）');
-    var items = [];
-    for (var r = m.headRow + 1; r < pick.rows.length; r++){
-      var row = pick.rows[r];
-      var no = String(row[m.idx.no]==null?'':row[m.idx.no]).replace(/\D/g,'');
-      var dt = m.idx.date !== undefined ? xlDate(row[m.idx.date]) : '';
-      if (!no || !dt) continue;
-      items.push({
-        no: no, date: dt,
-        name:  String(row[m.idx.name]==null?'':row[m.idx.name]).trim(),
-        grade: m.idx.grade !== undefined ? String(row[m.idx.grade]||'').trim() : '',
-        at:    m.idx.at    !== undefined ? xlTime(row[m.idx.at]) : ''
-      });
-    }
-    if (!items.length) throw new Error('取り込める行がありません');
-    return call('api_importReservations', { items: items });
-  }).then(function(r){
-    if (!r.ok) throw new Error(r.error);
-    toast('予約を ' + r.count + '件 取り込みました（' + r.days.join('・') + '）');
-    load(true);
-  }).catch(function(e){ toast(e.message); load(true); });
+    if (!pick || pick.length < 2) throw new Error('表が見つかりませんでした');
+    var fallback = kind === 'res' ? ($('resDate') ? $('resDate').value : '') : '';
+    var r = kind === 'roster' ? detectRoster(pick) : detectRes(pick, fallback);
+    pending[kind] = r.items;
+    $(kind === 'roster' ? 'pvRos' : 'pvRes').innerHTML = reportHtml(r, kind);
+    var b = $('pvGo-' + kind);
+    if (b) b.addEventListener('click', function(){ send(kind); });
+    $(kind === 'roster' ? 'lblRos' : 'lblRes').textContent = file.name;
+  }).catch(function(e){ toast(e.message); render(); });
 }
 
 /* ---------- 自動更新 ---------- */
