@@ -1842,6 +1842,7 @@ const state = {
   days: [],              // [1..31]
   shiftDays: [],         // [{m,d,staff:[名前]}]
   pending: [],           // {name,team,day,at,no,id}  no=マナビス生番号 / id=同期先での番号
+  reflected: [],         // Excelへ反映済みだが、まだ読み込み直していない分
   noByName: {},          // 氏名 → 生番号
   sync: { url: '', token: '' },
   syncAt: null, syncErr: '',
@@ -1872,7 +1873,8 @@ async function save() {
     month: state.month, year: state.year, students: state.students, days: state.days,
     shiftDays: state.shiftDays, pending: state.pending, loadedAt: state.loadedAt,
     shiftAt: state.shiftAt, teams: state.teams, cap: state.cap, target: state.target,
-    noByName: state.noByName, sync: state.sync, syncAt: state.syncAt
+    noByName: state.noByName, sync: state.sync, syncAt: state.syncAt,
+    reflected: state.reflected
   }));
 }
 async function load() {
@@ -2030,18 +2032,21 @@ function loadOf(day, team) {
     const m = s.marks[day];
     if (m === '予定日' || m === '済') n++;
   });
-  state.pending.forEach(p => { if (p.day === day && p.team === team) n++; });
+  const seen = {};
+  state.students.forEach(s => { if (s.team === team && (s.marks[day] === '予定日' || s.marks[day] === '済')) seen[s.name] = 1; });
+  state.pending.concat(state.reflected).forEach(p => {
+    if (p.day === day && p.team === team && !seen[p.name]) { seen[p.name] = 1; n++; }
+  });
   return n;
 }
-function doneCount(s) {
-  let n = Object.keys(s.marks).filter(d => s.marks[d] === '予定日' || s.marks[d] === '済').length;
-  n += state.pending.filter(p => p.name === s.name).length;
-  return n;
-}
+function doneCount(s) { return datesOf(s).length; }
 function datesOf(s) {
-  const ds = Object.keys(s.marks).filter(d => s.marks[d] === '予定日' || s.marks[d] === '済').map(Number);
-  state.pending.filter(p => p.name === s.name).forEach(p => ds.push(p.day));
-  return ds.sort((a, b) => a - b);
+  const set = {};
+  Object.keys(s.marks).forEach(d => { if (s.marks[d] === '予定日' || s.marks[d] === '済') set[Number(d)] = 1; });
+  // 未反映の分と、Excelへ反映済みでまだ読み込み直していない分も「決まっている」として数える
+  state.pending.filter(p => p.name === s.name).forEach(p => { set[p.day] = 1; });
+  state.reflected.filter(p => p.name === s.name).forEach(p => { set[p.day] = 1; });
+  return Object.keys(set).map(Number).sort((a, b) => a - b);
 }
 function needsRebook(s) {
   return Object.keys(s.marks).some(d => s.marks[d] === '要振替');
@@ -2084,7 +2089,7 @@ function mergeRemote(items) {
     const st = nm ? byName[squashName(nm)] : null;
     return {
       id: it.id, no: String(it.no), day: Number(it.d),
-      name: nm || ('生番号 ' + it.no),
+      name: (st && st.name) || nm || ('生番号 ' + it.no),
       team: (st && st.team) || it.team || ''
     };
   });
@@ -2092,6 +2097,12 @@ function mergeRemote(items) {
   const unsent = state.pending.filter(p => !p.id);
   const seen = {};
   remote.forEach(r => { seen[r.no + '/' + r.day] = true; });
+  // 同期先から消えた＝他の端末でExcelに反映された分。手元では控えに移す
+  state.pending.filter(p => p.id && !seen[p.no + '/' + p.day]).forEach(p => {
+    if (!state.reflected.some(r => r.name === p.name && r.day === p.day)) {
+      state.reflected.push({ name: p.name, team: p.team, day: p.day, no: p.no, m: state.month });
+    }
+  });
   state.pending = remote.concat(unsent.filter(u => !seen[u.no + '/' + u.day]));
 }
 
@@ -2382,6 +2393,10 @@ function renderData(v) {
         <div id="pendList">${lines.map((p, i) => `<div class="pend"><span class="d">${state.month}/${p.day}</span>
           <span class="n">${esc(p.name)}</span><button data-k="${esc(p.name)}|${p.day}">取消</button></div>`).join('')}</div>
         <button class="btn warnbtn" id="btnClear" style="margin-top:12px">反映済みにする（一覧を空にする）</button>`
+      + (state.reflected.length ? `<p style="margin-top:10px;font-size:12.5px;color:#5A6672">
+          Excelへ反映済みで、まだ読み込み直していない分が ${state.reflected.length}件 あります。
+          これらも「決まっている」として件数と混み具合に数えています。
+          日程管理シートを読み込み直すと消えます。</p>` : '')
       : '<p style="margin:0">まだありません。</p>'}
     </div>
     <div class="card">
@@ -2428,7 +2443,13 @@ function renderData(v) {
         try { await syncCall('done', { ids: state.pending.filter(p => p.id).map(p => p.id) }); }
         catch (e) { if (!confirm('同期先を更新できませんでした（' + e.message + '）。手元の一覧だけ空にしますか？')) return; }
       }
-      state.pending = []; await save(); render(); toast('空にしました');
+      // 消さずに控えへ移す。Excelを読み込み直すまでは件数に数え続ける
+      state.pending.forEach(p => {
+        if (!state.reflected.some(r => r.name === p.name && r.day === p.day)) {
+          state.reflected.push({ name: p.name, team: p.team, day: p.day, no: p.no, m: state.month });
+        }
+      });
+      state.pending = []; await save(); render(); toast('反映済みにしました');
     });
     v.querySelectorAll('.pend button').forEach(b => b.addEventListener('click', async () => {
       const [nm, d] = b.dataset.k.split('|');
@@ -2469,6 +2490,13 @@ async function importSchedule(file) {
     state.loadedAt = Date.now();
     if (!state.year) state.year = new Date().getFullYear();
     // Excelに入っている分は、未反映一覧から消す
+    // 控えのうち、Excelに入っていたものと、別の月のものは捨てる
+    state.reflected = (state.reflected || []).filter(p => {
+      if (p.m && p.m !== r.month) return false;          // 別の月の分は捨てる
+      const st = r.students.find(x => x.name === p.name);
+      if (!st) return false;
+      return !(st.marks[p.day] === '予定日' || st.marks[p.day] === '済');
+    });
     const before = state.pending.length;
     state.pending = state.pending.filter(p => {
       const s = r.students.find(x => x.name === p.name);
@@ -2495,6 +2523,7 @@ async function importShift(file) {
   await load();
   if (!state.sync) state.sync = { url: '', token: '' };
   if (!state.noByName) state.noByName = {};
+  if (!state.reflected) state.reflected = [];
   render();
   autoSync();                                   // 起動時に取り込む
   // 画面に戻ってきたときにも取り込む（別の端末で入れた分を拾う）
