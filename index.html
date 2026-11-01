@@ -2048,9 +2048,6 @@ function datesOf(s) {
   state.reflected.filter(p => p.name === s.name).forEach(p => { set[p.day] = 1; });
   return Object.keys(set).map(Number).sort((a, b) => a - b);
 }
-function needsRebook(s) {
-  return Object.keys(s.marks).some(d => s.marks[d] === '要振替');
-}
 
 /* ---------- 画面 ---------- */
 /* ---------- スプレッドシートとの同期 ---------- */
@@ -2192,7 +2189,7 @@ function renderBook(v) {
   v.innerHTML = `
     <div class="search"><input type="text" id="q" placeholder="名前・カナで検索" value="${esc(state.q)}"></div>
     <div class="chips">
-      <button class="chip ${state.onlyNeed ? 'on' : ''}" id="cNeed">未設定のみ</button>
+      <button class="chip ${state.onlyNeed ? 'on' : ''}" id="cNeed">${state.target}回に未達のみ</button>
       <button class="chip ${!state.filterTeam ? 'on' : ''}" data-team="">全チーム</button>
       ${teams.map(t => `<button class="chip ${state.filterTeam === t ? 'on' : ''}" data-team="${t}">${t}</button>`).join('')}
     </div>
@@ -2210,7 +2207,7 @@ function matchedStudents() {
     if (s.skip) return false;
     if (state.filterTeam && s.team !== state.filterTeam) return false;
     if (q && s.name.indexOf(q) < 0 && (s.kana || '').indexOf(q) < 0) return false;
-    if (state.onlyNeed && doneCount(s) >= state.target && !needsRebook(s)) return false;
+    if (state.onlyNeed && doneCount(s) >= state.target) return false;
     return true;
   });
 }
@@ -2226,7 +2223,7 @@ function renderList() {
     return `<button class="stu ${cls}" data-i="${state.students.indexOf(s)}" style="--tc:${TEAM_COLOR[s.team] || '#CCC'}">
       <span class="nm"><b>${esc(s.name)}</b>
         <small>${esc(s.grade)} ・ ${esc(s.team)}${ds.length ? ' ・ ' + ds.map(d => state.month + '/' + d).join(' ') : ''}</small></span>
-      <span class="rest"><b>${rest}</b><small>${needsRebook(s) ? '要振替' : '残り'}</small></span>
+      <span class="rest"><b>${rest}</b><small>残り</small></span>
     </button>`;
   }).join('') + (list.length > 120 ? `<div class="empty">ほか${list.length - 120}名。検索で絞り込んでください</div>` : '');
   box.querySelectorAll('.stu').forEach(b =>
@@ -2344,22 +2341,25 @@ function renderDays(v) {
     <p style="font-size:12px;color:var(--ink-2);margin:0 4px">予定件数 / 受け入れ上限（そのチームの出勤人数 × ${state.cap}件）。灰色はそのチームの出勤がない日です。</p>`;
 }
 
-/* --- 未設定の生徒 --- */
+/* --- 未設定の生徒（1件も決まっていない人だけ） --- */
 function renderNeed(v) {
-  const need = state.students.filter(s => !s.skip && (doneCount(s) < state.target || needsRebook(s)));
+  // 未設定＝今月まだ1件も面談が決まっていない生徒
+  const need = state.students.filter(s => !s.skip && doneCount(s) === 0);
   const byTeam = {};
   need.forEach(s => { (byTeam[s.team] = byTeam[s.team] || []).push(s); });
-  const total = need.length;
-  v.innerHTML = `<div class="card"><h2>あと${total}名</h2>
-      <p>目標${state.target}回に届いていない生徒と、要振替の生徒です。</p></div>` +
-    Object.keys(byTeam).map(t => `<div class="card">
-      <h2 style="color:${TEAM_COLOR[t] || '#333'}">${esc(t)}　${byTeam[t].length}名</h2>
-      ${byTeam[t].map(s => {
-        const rest = Math.max(0, state.target - doneCount(s));
-        return `<button class="stu" data-i="${state.students.indexOf(s)}" style="--tc:${TEAM_COLOR[t] || '#CCC'}">
-          <span class="nm"><b>${esc(s.name)}</b><small>${esc(s.grade)}${needsRebook(s) ? ' ・ 要振替' : ''}</small></span>
-          <span class="rest"><b>${rest}</b><small>残り</small></span></button>`;
-      }).join('')}</div>`).join('');
+
+  const row = (s, t) => `<button class="stu" data-i="${state.students.indexOf(s)}" style="--tc:${TEAM_COLOR[t] || '#CCC'}">
+      <span class="nm"><b>${esc(s.name)}</b><small>${esc(s.grade)}</small></span>
+      <span class="rest"><b>${Math.max(0, state.target - doneCount(s))}</b><small>残り</small></span></button>`;
+
+  v.innerHTML = `<div class="card"><h2>未設定 ${need.length}名</h2>
+      <p>今月まだ1件も面談が決まっていない生徒です。1件でも決まった生徒はここから外れます。</p></div>`
+    + (need.length
+      ? Object.keys(byTeam).map(t => `<div class="card">
+          <h2 style="color:${TEAM_COLOR[t] || '#333'}">${esc(t === '未設定' ? 'チーム未設定' : t)}　${byTeam[t].length}名</h2>
+          ${byTeam[t].map(s => row(s, t)).join('')}</div>`).join('')
+      : '<div class="card"><p style="margin:0">全員1件以上決まっています。</p></div>');
+
   v.querySelectorAll('.stu').forEach(b =>
     b.addEventListener('click', () => openStudent(Number(b.dataset.i))));
 }
