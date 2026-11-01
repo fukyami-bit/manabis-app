@@ -2189,7 +2189,7 @@ function renderBook(v) {
   v.innerHTML = `
     <div class="search"><input type="text" id="q" placeholder="名前・カナで検索" value="${esc(state.q)}"></div>
     <div class="chips">
-      <button class="chip ${state.onlyNeed ? 'on' : ''}" id="cNeed">${state.target}回に未達のみ</button>
+      <button class="chip ${state.onlyNeed ? 'on' : ''}" id="cNeed">未設定のみ</button>
       <button class="chip ${!state.filterTeam ? 'on' : ''}" data-team="">全チーム</button>
       ${teams.map(t => `<button class="chip ${state.filterTeam === t ? 'on' : ''}" data-team="${t}">${t}</button>`).join('')}
     </div>
@@ -2207,7 +2207,7 @@ function matchedStudents() {
     if (s.skip) return false;
     if (state.filterTeam && s.team !== state.filterTeam) return false;
     if (q && s.name.indexOf(q) < 0 && (s.kana || '').indexOf(q) < 0) return false;
-    if (state.onlyNeed && doneCount(s) >= state.target) return false;
+    if (state.onlyNeed && doneCount(s) > 0) return false;   // 未設定＝1件も決まっていない人だけ
     return true;
   });
 }
